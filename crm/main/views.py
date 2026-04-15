@@ -16,17 +16,6 @@ def sheets_api(request):
     """API: Получить все листы"""
     try:
         items = Item.objects.all()
-        #sheets = SpreadsheetSheet.objects.all()
-        # data = [
-        #     {
-        #         'key': sheet.key,
-        #         'title': sheet.title,
-        #         'data':  [[item.name, item.description, item.amount, item.price] for item in items],    #sheet.data or [], #[[items.name, items.description]],  #
-        #         'rows': sheet.rows,
-        #         'columns': sheet.columns,
-        #     }
-        #     for sheet in sheets
-        # ]
         data = [{
             'key': 'DataEntry',
             'title': 'entry',
@@ -80,18 +69,19 @@ def save_all_sheets_api(request):
         if not isinstance(sheets_data, list):
             return JsonResponse({'error': 'Expected array of sheets'}, status=400)
         
-        for i in range(len(sheets_data[0]['data'])):
+        item_data = sheets_data[0]['data']
+        for i in range(len(item_data)):
             if Item.objects.filter(id=(i+1)).exists():
-                Item.objects.filter(id=(i+1)).update(name = sheets_data[0]['data'][i][0], 
-                                    description = sheets_data[0]['data'][i][1], 
-                                    amount = sheets_data[0]['data'][i][2], 
-                                    price = sheets_data[0]['data'][i][3], )
+                Item.objects.filter(id=(i+1)).update(name = item_data[i][0], 
+                                    description = item_data[i][1], 
+                                    amount = item_data[i][2], 
+                                    price = item_data[i][3], )
             else:
                 Item.objects.create(id = (i+1),
-                                    name = sheets_data[0]['data'][i][0], 
-                                    description = sheets_data[0]['data'][i][1], 
-                                    amount = sheets_data[0]['data'][i][2], 
-                                    price = sheets_data[0]['data'][i][3], )
+                                    name = item_data[i][0], 
+                                    description = item_data[i][1], 
+                                    amount = item_data[i][2], 
+                                    price = item_data[i][3], )
 
         return JsonResponse({
             'status': 'ok', 
@@ -102,16 +92,3 @@ def save_all_sheets_api(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def delete_sheet_api(request, key):
-    """API: Удалить лист"""
-    try:
-        deleted, _ = SpreadsheetSheet.objects.filter(key=key).delete()
-        return JsonResponse({
-            'status': 'ok',
-            'deleted': deleted > 0
-        })
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
