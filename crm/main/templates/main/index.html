@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CRM Spreadsheet</title>
+    <meta charset="UTF-8">
+    <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            padding: 20px; 
+            margin: 0;
+            background: #f5f5f5;
+        }
+        h1 { margin: 0 0 20px 0; color: #333; }
+        #spreadsheet { 
+            margin-top: 10px; 
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .toolbar { 
+            margin-bottom: 15px; 
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .toolbar button { 
+            padding: 10px 20px; 
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover { background: #45a049; }
+        .btn-secondary {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-secondary:hover { background: #1976D2; }
+        .status { 
+            padding: 8px 16px; 
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-left: auto;
+        }
+        .status.saving { background: #fff3cd; color: #856404; }
+        .status.saved { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        
+        .tabulator { font-size: 14px; }
+        .tabulator-header { background: #f8f9fa; }
+        .tabulator-footer { background: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <h1>📊 CRM Spreadsheet</h1>
+    
+    <div class="toolbar">
+        <button id="btn-save" class="btn-primary">💾 Сохранить (Ctrl+S)</button>
+        <button id="btn-add-sheet" class="btn-secondary">➕ Новый лист</button>
+        <button id="btn-refresh" class="btn-secondary">🔄 Обновить</button>
+        <span id="status" class="status info">Загрузка...</span>
+    </div>
+    
+    <div id="spreadsheet"></div>
+
+    <script>
+        // ============================================
+        // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+        // ============================================
+        var table = null;
+        
+        // Храним конфигурацию листов ЛОКАЛЬНО
+        // Это наш источник правды для ключей и названий
+        var sheetsConfig = [];
+        
+        // Дефолтные листы (если база пустая)
+        var defaultSheets = [
+            {
+                title: "Клиенты",
+                key: "clients",
+                rows: 25,
+                columns: 8,
+                data: [
+                    ["Имя", "Email", "Телефон", "Компания", "Статус", "Город", "Дата", "Примечание"],
+                    ["Иван Петров", "ivan@mail.ru", "+7 999 111-22-33", "ООО Рога", "Новый", "Москва", "2025-01-15", ""],
+                    ["Мария Сидорова", "maria@gmail.com", "+7 999 444-55-66", "ИП Копыта", "В работе", "СПб", "2025-01-20", "Перезвонить"],
+                ]
+            },
+            {
+                title: "Сделки",
+                key: "deals",
+                rows: 25,
+                columns: 6,
+                data: [
+                    ["Название", "Сумма", "Статус", "Клиент", "Дата", "Менеджер"],
+                    ["Поставка оборудования", "150000", "В работе", "Иван Петров", "2025-02-01", "Алексей"],
+                    ["Консультация", "25000", "Закрыта", "Мария Сидорова", "2025-01-15", "Ольга"],
+                ]
+            }
+        ];
+
+        // ============================================
+        // УТИЛИТЫ
+        // ============================================
+        function showStatus(text, type) {
+            var el = document.getElementById('status');
+            el.textContent = text;
+            el.className = 'status ' + (type || 'info');
+            
+            if (type === 'saved') {
+                setTimeout(function() { 
+                    el.textContent = ''; 
+                    el.className = 'status'; 
+                }, 3000);
+            }
+        }
+
+        function log(msg) {
+            console.log('[Spreadsheet]', msg);
+        }
+
+        // ============================================
+        // РАБОТА С ДАННЫМИ
+        // ============================================
+        
+        // Собрать данные всех листов для сохранения
+        function collectAllSheetsData() {
+            var result = [];
+            
+            log('Собираем данные из ' + sheetsConfig.length + ' листов');
+            
+            for (let i = 0; i < sheetsConfig.length; i++) {
+                let conf = sheetsConfig[i];
+                let sheetData = [];
+                
+                try {
+                    // getSheetData принимает ключ листа
+                    sheetData = table.getSheetData(conf.key);
+                    log('  Лист "' + conf.title + '": ' + (sheetData ? sheetData.length : 0) + ' строк');
+                } catch (e) {
+                    log('  Ошибка получения ' + conf.key + ': ' + e.message);
+                    sheetData = conf.data || [];
+                }
+                
+                result.push({
+                    key: conf.key,
+                    title: conf.title,
+                    rows: conf.rows || 25,
+                    columns: conf.columns || 10,
+                    data: sheetData || []
+                });
+            }
+            
+            return result;
+        }
+
+        // ============================================
+        // API ФУНКЦИИ
+        // ============================================
+        
+        // Загрузить листы с сервера
+        async function loadSheets() {
+            showStatus('Загрузка...', 'info');
+            
+            try {
+                let response = await fetch('/api/sheets/');
+                
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                
+                let data = await response.json();
+                //console.log(data);
+                console.log(`data: ${data.json}`);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                if (Array.isArray(data) && data.length > 0) {
+                    sheetsConfig = data;
+                } else {
+                    sheetsConfig = JSON.parse(JSON.stringify(defaultSheets));
+                }
+                
+                initTable(sheetsConfig);
+                showStatus('Загружено: ' + sheetsConfig.length + ' листов', 'saved');
+                
+            } catch (error) {
+                log('Ошибка загрузки: ' + error.message);
+                console.error(error);
+                sheetsConfig = JSON.parse(JSON.stringify(defaultSheets));
+                initTable(sheetsConfig);
+                showStatus('Ошибка загрузки, используем локальные данные', 'error');
+            }
+        }
+
+        // Сохранить все листы на сервер
+        async function saveAllSheets() {
+            showStatus('Сохранение...', 'saving');
+            
+            var sheetsToSave = collectAllSheetsData();
+            
+            log('Отправляем на сервер:');
+            sheetsToSave.forEach(function(s) {
+                log('  - ' + s.title + ' (' + s.key + '): ' + s.data.length + ' строк');
+            });
+            
+            try {
+                var response = await fetch('/api/sheets/save-all/', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(sheetsToSave)
+                });
+                
+                var result = await response.json();
+                log('Ответ сервера: ' + JSON.stringify(result));
+                
+                if (result.status === 'ok') {
+                    showStatus('✓ Сохранено: ' + result.saved + ' листов', 'saved');
+                    
+                    // Обновляем локальную конфигурацию данными которые сохранили
+                    sheetsConfig = sheetsToSave;
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+                
+            } catch (error) {
+                log('Ошибка сохранения: ' + error.message);
+                console.error(error);
+                showStatus('✗ Ошибка: ' + error.message, 'error');
+            }
+        }
+
+        // ============================================
+        // ИНИЦИАЛИЗАЦИЯ ТАБЛИЦЫ
+        // ============================================
+        function initTable(sheets) {
+            log('Инициализация таблицы с ' + sheets.length + ' листами');
+            
+            // Уничтожаем старую таблицу если есть
+            if (table) {
+                table.destroy();
+                table = null;
+            }
+            
+            table = new Tabulator("#spreadsheet", {
+                height: "500px",
+
+                // === SPREADSHEET MODE ===
+                spreadsheet: true,
+                spreadsheetRows: 30,
+                spreadsheetColumns: 15,
+                spreadsheetColumnDefinition: {
+                    editor: "input", 
+                    resizable: "header"
+                },
+                spreadsheetSheets: sheets,
+                spreadsheetSheetTabs: true,
+
+                // === ROW HEADER ===
+                rowHeader: {
+                    field: "_id", 
+                    hozAlign: "center", 
+                    headerSort: false, 
+                    frozen: true,
+                    width: 50
+                },
+
+                // === EDITING ===
+                editTriggerEvent: "dblclick",
+                editorEmptyValue: undefined,
+
+                // === RANGE SELECTION ===
+                selectableRange: 100,
+                selectableRangeColumns: true,
+                selectableRangeRows: true,
+                selectableRangeClearCells: true,
+
+                // === CLIPBOARD ===
+                clipboard: true,
+                clipboardCopyStyled: false,
+                clipboardCopyConfig: {
+                    rowHeaders: false,
+                    columnHeaders: false,
+                },
+                clipboardCopyRowRange: "range",
+                clipboardPasteParser: "range",
+                clipboardPasteAction: "range",
+            });
+
+            // === СОБЫТИЯ ===
+            var saveTimeout = null;
+            
+            function scheduleSave() {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(saveAllSheets, 3000);
+            }
+            
+            // После редактирования ячейки
+            table.on("cellEdited", function(cell) {
+                log('Ячейка изменена');
+                showStatus('Изменено...', 'saving');
+                scheduleSave();
+            });
+            
+            // После вставки из буфера
+            table.on("clipboardPasted", function(data) {
+                log('Вставлено из буфера');
+                showStatus('Вставлено...', 'saving');
+                scheduleSave();
+            });
+            
+            log('Таблица инициализирована');
+        }
+
+        // ============================================
+        // УПРАВЛЕНИЕ ЛИСТАМИ
+        // ============================================
+        function addNewSheet() {
+            var name = prompt("Название нового листа:");
+            if (!name || !name.trim()) return;
+            
+            name = name.trim();
+            var key = 'sheet_' + Date.now();
+            
+            log('Создаём лист: ' + name + ' (' + key + ')');
+            
+            var newSheet = {
+                title: name,
+                key: key,
+                rows: 25,
+                columns: 10,
+                data: []
+            };
+            
+            // 1. Добавляем в локальную конфигурацию
+            sheetsConfig.push(newSheet);
+            
+            // 2. Добавляем в таблицу
+            table.addSheet(newSheet);
+            
+            // 3. Переключаемся на новый лист
+            try {
+                table.setSheet(key);
+            } catch(e) {
+                log('Не удалось переключиться: ' + e.message);
+            }
+            
+            // 4. Сохраняем
+            setTimeout(saveAllSheets, 500);
+        }
+
+        // ============================================
+        // ОБРАБОТЧИКИ
+        // ============================================
+        document.getElementById('btn-save').addEventListener('click', saveAllSheets);
+        document.getElementById('btn-add-sheet').addEventListener('click', addNewSheet);
+        document.getElementById('btn-refresh').addEventListener('click', loadSheets);
+
+        // Ctrl+S
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveAllSheets();
+            }
+        });
+
+        // ============================================
+        // СТАРТ
+        // ============================================
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Страница загружена');
+            loadSheets();
+        });
+    </script>
+</body>
+</html>
