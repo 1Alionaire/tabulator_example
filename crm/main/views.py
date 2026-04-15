@@ -16,17 +16,25 @@ def sheets_api(request):
     """API: Получить все листы"""
     try:
         items = Item.objects.all()
-        sheets = SpreadsheetSheet.objects.all()
-        data = [
-            {
-                'key': sheet.key,
-                'title': sheet.title,
-                'data': sheet.data or [],
-                'rows': sheet.rows,
-                'columns': sheet.columns,
-            }
-            for sheet in sheets
-        ]
+        #sheets = SpreadsheetSheet.objects.all()
+        # data = [
+        #     {
+        #         'key': sheet.key,
+        #         'title': sheet.title,
+        #         'data':  [[item.name, item.description, item.amount, item.price] for item in items],    #sheet.data or [], #[[items.name, items.description]],  #
+        #         'rows': sheet.rows,
+        #         'columns': sheet.columns,
+        #     }
+        #     for sheet in sheets
+        # ]
+        data = [{
+            'key': 'DataEntry',
+            'title': 'entry',
+            'data':  [[item.name, item.description, item.amount, item.price] for item in items],    #sheet.data or [], #[[items.name, items.description]],  #
+            'rows': 1000,
+            'columns': 10,
+        }]
+
         return JsonResponse(data, safe=False)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
@@ -38,8 +46,10 @@ def save_sheet_api(request):
     """API: Сохранить один лист"""
     try:
         body = json.loads(request.body)
+        print(body)
         key = body.get('key')
         data = body.get('data', [])
+        print(data)
         
         if not key:
             return JsonResponse({'error': 'key is required'}, status=400)
@@ -66,30 +76,26 @@ def save_all_sheets_api(request):
     """API: Сохранить все листы сразу"""
     try:
         sheets_data = json.loads(request.body)
-        
+
         if not isinstance(sheets_data, list):
             return JsonResponse({'error': 'Expected array of sheets'}, status=400)
         
-        saved_count = 0
-        for sheet_data in sheets_data:
-            key = sheet_data.get('key')
-            if not key:
-                continue
-                
-            SpreadsheetSheet.objects.update_or_create(
-                key=key,
-                defaults={
-                    'title': sheet_data.get('title', key),
-                    'data': sheet_data.get('data', []),
-                    'rows': sheet_data.get('rows', 20),
-                    'columns': sheet_data.get('columns', 10),
-                }
-            )
-            saved_count += 1
-        
+        for i in range(len(sheets_data[0]['data'])):
+            if Item.objects.filter(id=(i+1)).exists():
+                Item.objects.filter(id=(i+1)).update(name = sheets_data[0]['data'][i][0], 
+                                    description = sheets_data[0]['data'][i][1], 
+                                    amount = sheets_data[0]['data'][i][2], 
+                                    price = sheets_data[0]['data'][i][3], )
+            else:
+                Item.objects.create(id = (i+1),
+                                    name = sheets_data[0]['data'][i][0], 
+                                    description = sheets_data[0]['data'][i][1], 
+                                    amount = sheets_data[0]['data'][i][2], 
+                                    price = sheets_data[0]['data'][i][3], )
+
         return JsonResponse({
             'status': 'ok', 
-            'saved': saved_count
+            'saved': 1
         })
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)

@@ -69,7 +69,7 @@
     
     <div class="toolbar">
         <button id="btn-save" class="btn-primary">💾 Сохранить (Ctrl+S)</button>
-        <button id="btn-add-sheet" class="btn-secondary">➕ Новый лист</button>
+        {% comment %} <button id="btn-add-sheet" class="btn-secondary">➕ Новый лист</button> {% endcomment %}
         <button id="btn-refresh" class="btn-secondary">🔄 Обновить</button>
         <span id="status" class="status info">Загрузка...</span>
     </div>
@@ -81,36 +81,7 @@
         // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
         // ============================================
         var table = null;
-        
-        // Храним конфигурацию листов ЛОКАЛЬНО
-        // Это наш источник правды для ключей и названий
         var sheetsConfig = [];
-        
-        // Дефолтные листы (если база пустая)
-        var defaultSheets = [
-            {
-                title: "Клиенты",
-                key: "clients",
-                rows: 25,
-                columns: 8,
-                data: [
-                    ["Имя", "Email", "Телефон", "Компания", "Статус", "Город", "Дата", "Примечание"],
-                    ["Иван Петров", "ivan@mail.ru", "+7 999 111-22-33", "ООО Рога", "Новый", "Москва", "2025-01-15", ""],
-                    ["Мария Сидорова", "maria@gmail.com", "+7 999 444-55-66", "ИП Копыта", "В работе", "СПб", "2025-01-20", "Перезвонить"],
-                ]
-            },
-            {
-                title: "Сделки",
-                key: "deals",
-                rows: 25,
-                columns: 6,
-                data: [
-                    ["Название", "Сумма", "Статус", "Клиент", "Дата", "Менеджер"],
-                    ["Поставка оборудования", "150000", "В работе", "Иван Петров", "2025-02-01", "Алексей"],
-                    ["Консультация", "25000", "Закрыта", "Мария Сидорова", "2025-01-15", "Ольга"],
-                ]
-            }
-        ];
 
         // ============================================
         // УТИЛИТЫ
@@ -192,9 +163,8 @@
                 
                 if (Array.isArray(data) && data.length > 0) {
                     sheetsConfig = data;
-                } else {
-                    sheetsConfig = JSON.parse(JSON.stringify(defaultSheets));
                 }
+
                 
                 initTable(sheetsConfig);
                 showStatus('Загружено: ' + sheetsConfig.length + ' листов', 'saved');
@@ -202,7 +172,7 @@
             } catch (error) {
                 log('Ошибка загрузки: ' + error.message);
                 console.error(error);
-                sheetsConfig = JSON.parse(JSON.stringify(defaultSheets));
+                //sheetsConfig = JSON.parse(JSON.stringify(defaultSheets));
                 initTable(sheetsConfig);
                 showStatus('Ошибка загрузки, используем локальные данные', 'error');
             }
@@ -212,21 +182,18 @@
         async function saveAllSheets() {
             showStatus('Сохранение...', 'saving');
             
-            var sheetsToSave = collectAllSheetsData();
-            
-            log('Отправляем на сервер:');
-            sheetsToSave.forEach(function(s) {
-                log('  - ' + s.title + ' (' + s.key + '): ' + s.data.length + ' строк');
-            });
+            let sheetsToSave = collectAllSheetsData();
             
             try {
-                var response = await fetch('/api/sheets/save-all/', {
+                let response = await fetch('/api/sheets/save-all/', {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(sheetsToSave)
                 });
+
+                console.log(`sheetsToSave: ${sheetsToSave}`);
                 
                 var result = await response.json();
                 log('Ответ сервера: ' + JSON.stringify(result));
@@ -309,7 +276,7 @@
             
             function scheduleSave() {
                 clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(saveAllSheets, 3000);
+                saveTimeout = setTimeout(saveAllSheets, 10000);
             }
             
             // После редактирования ячейки
@@ -330,47 +297,10 @@
         }
 
         // ============================================
-        // УПРАВЛЕНИЕ ЛИСТАМИ
-        // ============================================
-        function addNewSheet() {
-            var name = prompt("Название нового листа:");
-            if (!name || !name.trim()) return;
-            
-            name = name.trim();
-            var key = 'sheet_' + Date.now();
-            
-            log('Создаём лист: ' + name + ' (' + key + ')');
-            
-            var newSheet = {
-                title: name,
-                key: key,
-                rows: 25,
-                columns: 10,
-                data: []
-            };
-            
-            // 1. Добавляем в локальную конфигурацию
-            sheetsConfig.push(newSheet);
-            
-            // 2. Добавляем в таблицу
-            table.addSheet(newSheet);
-            
-            // 3. Переключаемся на новый лист
-            try {
-                table.setSheet(key);
-            } catch(e) {
-                log('Не удалось переключиться: ' + e.message);
-            }
-            
-            // 4. Сохраняем
-            setTimeout(saveAllSheets, 500);
-        }
-
-        // ============================================
         // ОБРАБОТЧИКИ
         // ============================================
         document.getElementById('btn-save').addEventListener('click', saveAllSheets);
-        document.getElementById('btn-add-sheet').addEventListener('click', addNewSheet);
+        //document.getElementById('btn-add-sheet').addEventListener('click', addNewSheet);
         document.getElementById('btn-refresh').addEventListener('click', loadSheets);
 
         // Ctrl+S
